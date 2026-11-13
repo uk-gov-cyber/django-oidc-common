@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+
+{% block title %}Signed out{% endblock %}
+
+{% block content %}
+  <h1>Signed out</h1>
+  <p id="message">You have been signed out.</p>
+
+  <script>
+    (function () {
+      // There's no way to know here whether this session started via a
+      // portal or a direct visit, and no browser API to open "the user's
+      // home page" either way - the closest real equivalent is wherever the
+      // browser came from before this login round-trip started. Try
+      // closing the tab first, since that's the one action here with a
+      // result JS can actually detect.
+      var referrer = document.referrer;
+
+      window.close();
+
+      setTimeout(function () {
+        if (window.closed) {
+          return;
+        }
+        if (referrer) {
+          window.location.replace(referrer);
+        } else {
+          document.getElementById('message').textContent =
+            'You have been signed out. You can close this tab.';
+        }
+      }, 250);
+    })();
+  </script>
+{% endblock %}
