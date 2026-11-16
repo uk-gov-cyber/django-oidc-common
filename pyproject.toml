@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "django-oidc-common"
-version = "0.1.0"
-description = "Keycloak OIDC plumbing for Django apps: login session tracking, logout and back-channel logout."
+version = "0.2.0"
+description = "Keycloak OIDC plumbing for Django apps: login session tracking, logout, back-channel logout and bearer-token APIs."
 readme = "README.md"
 requires-python = ">=3.12"
 # Ranges, not pins - each consuming app pins exact versions in its own

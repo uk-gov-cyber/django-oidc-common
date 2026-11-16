@@ -10,7 +10,7 @@ copying the login and logout code.
 Add it to the app's `requirements.txt`, pinned to a release tag:
 
 ```
-django-oidc-common @ git+https://github.com/ORG/django-oidc-common.git@v0.1.0
+django-oidc-common @ git+https://github.com/uk-gov-cyber/django-oidc-common.git@v0.2.0
 ```
 
 This pulls in `Django`, `mozilla-django-oidc`, `PyJWT[crypto]` and `requests`
@@ -58,6 +58,9 @@ the secret out: the `if` skips it and the install works without a token.
 - `oidc_common.middleware.HealthCheckMiddleware`: answers `/healthz/` before
   Django's `ALLOWED_HOSTS` check runs, because an ALB probes a task by its
   private IP rather than by domain name.
+- `oidc_common.bearer`: `BearerTokenVerifier` and `bearer_token_required`,
+  for views called by other apps with a Keycloak access token. See
+  [APIs called with a bearer token](#apis-called-with-a-bearer-token).
 - `oidc_common.views` and `oidc_common.urls`: the `logout`, `logged_out` and
   `backchannel_logout` views, mounted at `/logout/`, `/logged-out/` and
   `/oidc/backchannel-logout/`.
@@ -170,3 +173,48 @@ ruff check . && ruff format --check .
 
 Follow semantic versioning. A change to a model, a URL, or a required setting
 is a breaking change for consuming apps.
+
+## APIs called with a bearer token
+
+For a view that another app calls with an access token (usually from the
+client credentials grant), rather than a signed-in browser:
+
+```python
+from oidc_common.bearer import BearerTokenVerifier, bearer_token_required
+
+verifier = BearerTokenVerifier(
+    issuer="https://<keycloak host>/realms/<realm>",
+    audience="<this app's client id>",
+)
+
+
+@bearer_token_required(verifier, scopes=["things:create"])
+def create_thing(request):
+    calling_client = request.bearer_claims["azp"]
+    ...
+```
+
+It refuses (401) a token that isn't signed by the realm, has another issuer,
+doesn't name this app in `aud`, has expired, or isn't an access token
+(`typ` must be `Bearer`; ID, refresh and logout tokens are refused). A valid
+token without every listed scope gets 403. Responses carry an RFC 6750
+`WWW-Authenticate` header. The view is CSRF-exempt, because it's
+authenticated by the header and never by cookies.
+
+`bearer_token_required` also takes a callable instead of a verifier: it's
+given the token's (unverified) issuer and returns the verifier for it, or
+`None` to refuse. An app serving several realms uses that to keep one verifier
+per realm; the chosen verifier still checks the issuer exactly.
+
+Keycloak setup for the calling app:
+
+1. **Client scopes → Create client scope:** name it after the scope, e.g.
+   `things:create`, type **None**, **Include in token scope** on.
+2. On that scope, **Mappers → By configuration → Audience:** Included client
+   audience = this app's client, **Add to access token** on. Without it, `aud`
+   doesn't name this app and every token is refused.
+3. **Clients → the calling client → Client scopes → Add client scope** →
+   `things:create` as **Default** (or Optional, and request it with
+   `scope=things:create`).
+
+Give the scope only to the clients that should call the API.
