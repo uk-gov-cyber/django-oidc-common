@@ -27,6 +27,7 @@ The audience is not added by Keycloak by default. Give the calling client an
 Audience mapper (usually on the client scope that carries the required scope)
 whose "Included client audience" is the API's own client.
 """
+
 import threading
 import time
 from functools import wraps
@@ -51,8 +52,18 @@ class BearerTokenVerifier:
     # so tokens with made-up key ids can't make us hammer Keycloak.
     REFRESH_COOLDOWN = 60
 
-    def __init__(self, issuer, audience, *, jwks_url=None, algorithms=("RS256",), verify_ssl=True,
-                 leeway=0, jwks_ttl=3600, timeout=10):
+    def __init__(
+        self,
+        issuer,
+        audience,
+        *,
+        jwks_url=None,
+        algorithms=("RS256",),
+        verify_ssl=True,
+        leeway=0,
+        jwks_ttl=3600,
+        timeout=10,
+    ):
         if not issuer or not audience:
             raise ValueError("issuer and audience are both required")
         self.issuer = issuer.rstrip("/")
@@ -80,12 +91,18 @@ class BearerTokenVerifier:
     def _key(self, kid):
         with self._lock:
             age = time.monotonic() - self._fetched_at
-            if not self._keys or age > self.jwks_ttl or (kid not in self._keys and age > self.REFRESH_COOLDOWN):
+            if (
+                not self._keys
+                or age > self.jwks_ttl
+                or (kid not in self._keys and age > self.REFRESH_COOLDOWN)
+            ):
                 try:
                     self._fetch()
                 except (requests.RequestException, ValueError) as exc:
                     if not self._keys:
-                        raise InvalidBearerToken("could not fetch the issuer's signing keys") from exc
+                        raise InvalidBearerToken(
+                            "could not fetch the issuer's signing keys"
+                        ) from exc
             jwk = self._keys.get(kid)
         if jwk is None:
             raise InvalidBearerToken("token signed with an unknown key")
@@ -102,8 +119,13 @@ class BearerTokenVerifier:
         key = self._key(header.get("kid"))
         try:
             claims = jwt.decode(
-                token, key, algorithms=self.algorithms, audience=self.audience, issuer=self.issuer,
-                leeway=self.leeway, options={"require": ["exp", "iat", "iss", "aud", "sub"]},
+                token,
+                key,
+                algorithms=self.algorithms,
+                audience=self.audience,
+                issuer=self.issuer,
+                leeway=self.leeway,
+                options={"require": ["exp", "iat", "iss", "aud", "sub"]},
             )
         except jwt.PyJWTError as exc:
             raise InvalidBearerToken(str(exc)) from exc
@@ -128,7 +150,9 @@ def _error(status, code, description, scopes=()):
     challenge = f'Bearer error="{code}", error_description="{description}"'
     if scopes:
         challenge += f', scope="{" ".join(scopes)}"'
-    response = JsonResponse({"error": code, "error_description": description}, status=status)
+    response = JsonResponse(
+        {"error": code, "error_description": description}, status=status
+    )
     response["WWW-Authenticate"] = challenge
     response["Cache-Control"] = "no-store"
     return response
@@ -155,12 +179,16 @@ def bearer_token_required(verifier, scopes=()):
             scheme, _, token = request.headers.get("Authorization", "").partition(" ")
             token = token.strip()
             if scheme.lower() != "bearer" or not token:
-                return _error(401, "invalid_request", "a bearer token is required", scopes)
+                return _error(
+                    401, "invalid_request", "a bearer token is required", scopes
+                )
             chosen = verifier
             if not isinstance(verifier, BearerTokenVerifier):
                 chosen = verifier(unverified_issuer(token))
                 if chosen is None:
-                    return _error(401, "invalid_token", "token issuer not accepted", scopes)
+                    return _error(
+                        401, "invalid_token", "token issuer not accepted", scopes
+                    )
             try:
                 request.bearer_claims = chosen.verify(token, scopes)
             except InsufficientScope as exc:

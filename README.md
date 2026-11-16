@@ -187,6 +187,7 @@ verifier = BearerTokenVerifier(
     audience="<this app's client id>",
 )
 
+
 @bearer_token_required(verifier, scopes=["things:create"])
 def create_thing(request):
     calling_client = request.bearer_claims["azp"]

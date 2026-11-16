@@ -48,8 +48,16 @@ def verifier():
 
 def make(key, kid=KID, alg="RS256", **overrides):
     now = int(time.time())
-    claims = {"iss": ISSUER, "aud": ["my-api", "account"], "sub": "sa-1", "azp": "caller-app",
-              "typ": "Bearer", "iat": now, "exp": now + 300, "scope": "profile things:create"}
+    claims = {
+        "iss": ISSUER,
+        "aud": ["my-api", "account"],
+        "sub": "sa-1",
+        "azp": "caller-app",
+        "typ": "Bearer",
+        "iat": now,
+        "exp": now + 300,
+        "scope": "profile things:create",
+    }
     claims.update(overrides)
     claims = {k: v for k, v in claims.items() if v is not None}
     return jwt.encode(claims, key, algorithm=alg, headers={"kid": kid})
@@ -61,16 +69,19 @@ def test_valid(fetch, verifier, key):
     assert fetch.call_args.args[0] == f"{ISSUER}/protocol/openid-connect/certs"
 
 
-@pytest.mark.parametrize("overrides", [
-    {"iss": "https://evil.example/realms/TEST"},
-    {"iss": ISSUER + "x"},
-    {"aud": "other-api"},
-    {"exp": int(time.time()) - 5},
-    {"exp": None},
-    {"sub": None},
-    {"typ": "ID"},
-    {"typ": "Refresh"},
-])
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"iss": "https://evil.example/realms/TEST"},
+        {"iss": ISSUER + "x"},
+        {"aud": "other-api"},
+        {"exp": int(time.time()) - 5},
+        {"exp": None},
+        {"sub": None},
+        {"typ": "ID"},
+        {"typ": "Refresh"},
+    ],
+)
 def test_rejected(fetch, verifier, key, overrides):
     with pytest.raises(InvalidBearerToken):
         verifier.verify(make(key, **overrides))
@@ -81,7 +92,9 @@ def test_missing_scope(fetch, verifier, key):
         verifier.verify(make(key, scope="profile"), scopes=["things:create"])
     with pytest.raises(InsufficientScope):
         # A scope name that merely contains the required one doesn't count.
-        verifier.verify(make(key, scope="things:create-extra"), scopes=["things:create"])
+        verifier.verify(
+            make(key, scope="things:create-extra"), scopes=["things:create"]
+        )
 
 
 def test_wrong_key(fetch, verifier):
@@ -91,7 +104,12 @@ def test_wrong_key(fetch, verifier):
 
 
 def test_hs256_with_public_key_refused(fetch, verifier, key):
-    token = jwt.encode({"iss": ISSUER}, "a-shared-secret-of-at-least-32-bytes", algorithm="HS256", headers={"kid": KID})
+    token = jwt.encode(
+        {"iss": ISSUER},
+        "a-shared-secret-of-at-least-32-bytes",
+        algorithm="HS256",
+        headers={"kid": KID},
+    )
     with pytest.raises(InvalidBearerToken, match="algorithm"):
         verifier.verify(token)
 
@@ -125,10 +143,19 @@ def test_decorator(fetch, verifier, key):
     ok = view(rf.post("/", HTTP_AUTHORIZATION=f"Bearer {make(key)}"))
     assert (ok.status_code, ok.content) == (200, b"caller-app")
     missing = view(rf.post("/"))
-    assert missing.status_code == 401 and missing["WWW-Authenticate"].startswith("Bearer ")
+    assert missing.status_code == 401 and missing["WWW-Authenticate"].startswith(
+        "Bearer "
+    )
     assert view(rf.post("/", HTTP_AUTHORIZATION="Basic abc")).status_code == 401
-    assert view(rf.post("/", HTTP_AUTHORIZATION=f"Bearer {make(key, aud='x')}")).status_code == 401
-    forbidden = view(rf.post("/", HTTP_AUTHORIZATION=f"Bearer {make(key, scope='profile')}"))
+    assert (
+        view(
+            rf.post("/", HTTP_AUTHORIZATION=f"Bearer {make(key, aud='x')}")
+        ).status_code
+        == 401
+    )
+    forbidden = view(
+        rf.post("/", HTTP_AUTHORIZATION=f"Bearer {make(key, scope='profile')}")
+    )
     assert forbidden.status_code == 403
     assert json.loads(forbidden.content)["error"] == "insufficient_scope"
 
@@ -136,6 +163,8 @@ def test_decorator(fetch, verifier, key):
 def test_decorator_picks_verifier_by_issuer(fetch, verifier, key):
     view = bearer_token_required(lambda iss: verifier if iss == ISSUER else None)(_view)
     rf = RequestFactory()
-    assert view(rf.get("/", HTTP_AUTHORIZATION=f"Bearer {make(key)}")).status_code == 200
+    assert (
+        view(rf.get("/", HTTP_AUTHORIZATION=f"Bearer {make(key)}")).status_code == 200
+    )
     other = make(key, iss="https://other.example/realms/X")
     assert view(rf.get("/", HTTP_AUTHORIZATION=f"Bearer {other}")).status_code == 401
